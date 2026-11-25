@@ -4803,6 +4803,36 @@ ${
       render();
     }
 
+function getOrdenMenu(idsDisponibles) {
+  const porDefecto = idsDisponibles || [
+    'agenda',
+    'odontograma',
+    'presupuestos',
+    'caja',
+    'historia',
+    'inventario',
+    'whatsapp',
+    'admin',
+    ...((state.config?.customSections || []).map((c) => c.id))
+  ];
+  const guardado = Array.isArray(state.config?.ordenMenu) ? state.config.ordenMenu : [];
+  const validos = guardado.filter((id) => porDefecto.includes(id));
+  const faltantes = porDefecto.filter((id) => !validos.includes(id));
+  return [...validos, ...faltantes];
+}
+
+function moverApartadoMenu(indice, direccion) {
+  const orden = getOrdenMenu();
+  const nuevoIndice = indice + direccion;
+  if (nuevoIndice < 0 || nuevoIndice >= orden.length) return;
+  const temp = orden[indice];
+  orden[indice] = orden[nuevoIndice];
+  orden[nuevoIndice] = temp;
+  state.config.ordenMenu = orden;
+  save();
+  render();
+}
+
     function guardarAdmin(e) {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -6107,7 +6137,7 @@ if (bloqueado) {
       const icos = state.config.navIcons || {};
       const customSecs = Array.isArray(state.config.customSections) ? state.config.customSections : [];
 
-      const navItems = [
+const navItemsBase = [
         ['agenda', icos.agenda || '📅', lbls.agenda || 'Panel y Agenda', turnosDia.filter((t) => t.estado !== 'Cancelado').length],
         ['odontograma', icos.odontograma || '🦷', lbls.odontograma || 'Odontograma + Fotos', hallazgosPac.length + fotosPac.length],
         ['presupuestos', icos.presupuestos || '📄', lbls.presupuestos || 'Presupuestos', state.presupuestos.filter((p) => p.pacId === pac?.id).length],
@@ -6117,7 +6147,12 @@ if (bloqueado) {
         ['whatsapp', icos.whatsapp || '💬', lbls.whatsapp || 'WhatsApp Business', state.chat.length],
         ['admin', icos.admin || '⚙️', lbls.admin || 'Admin y Diseño', ''],
         ...customSecs.map((cs) => [cs.id, cs.icon || '📁', cs.label, Array.isArray(cs.items) ? cs.items.length : 0])
-      ].filter(([id]) => puedeVerVista(id));
+      ];
+
+      const ordenIds = getOrdenMenu(navItemsBase.map(([id]) => id));
+      const navItems = ordenIds
+        .map((id) => navItemsBase.find(([itemId]) => itemId === id))
+        .filter((item) => item && puedeVerVista(item[0]));
 
       app.innerHTML = `
 	
@@ -7917,26 +7952,53 @@ ${
                           </div>
                         </div>
 
-                        <div class="pt-2 border-t border-slate-100 space-y-2">
-                          <div class="font-bold text-slate-700">Personalizar Nombres de Apartados del Menú</div>
-                          <div class="grid grid-cols-2 gap-2">
-                            <input name="nav_agenda" value="${esc(lbls.agenda || 'Panel y Agenda')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_odontograma" value="${esc(lbls.odontograma || 'Odontograma + Fotos')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_presupuestos" value="${esc(lbls.presupuestos || 'Presupuestos')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_caja" value="${esc(lbls.caja || 'Caja y Finanzas')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_historia" value="${esc(lbls.historia || 'Historia Clínica')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_inventario" value="${esc(lbls.inventario || 'Inventario & Excel')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_whatsapp" value="${esc(lbls.whatsapp || 'WhatsApp Business')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            <input name="nav_admin" value="${esc(lbls.admin || 'Admin y Diseño')}" class="px-2.5 py-1.5 border rounded-lg" />
-                            ${customSecs
-                              .map(
-                                (cs) => `
-                                <div class="flex items-center gap-1">
-                                  <input name="custom_nav_${cs.id}" value="${esc(cs.label)}" class="w-full px-2.5 py-1.5 border rounded-lg" />
-                                  <button type="button" onclick="eliminarApartadoMenu('${cs.id}')" class="px-2 py-1.5 bg-red-50 text-red-600 rounded-lg font-bold">✕</button>
-                                </div>`
-                              )
-                              .join('')}
+<div class="pt-2 border-t border-slate-100 space-y-2">
+                          <div class="flex items-center justify-between">
+                            <span class="font-bold text-slate-700">Personalizar Nombres y Orden del Menú</span>
+                            <span class="text-[11px] text-slate-400">Usa ⬆️ ⬇️ para reordenar</span>
+                          </div>
+                          <div class="space-y-1.5">
+                            ${(() => {
+                              const baseItems = [
+                                { id: 'agenda', name: 'nav_agenda', label: lbls.agenda || 'Panel y Agenda', custom: false },
+                                { id: 'odontograma', name: 'nav_odontograma', label: lbls.odontograma || 'Odontograma + Fotos', custom: false },
+                                { id: 'presupuestos', name: 'nav_presupuestos', label: lbls.presupuestos || 'Presupuestos', custom: false },
+                                { id: 'caja', name: 'nav_caja', label: lbls.caja || 'Caja y Finanzas', custom: false },
+                                { id: 'historia', name: 'nav_historia', label: lbls.historia || 'Historia Clínica', custom: false },
+                                { id: 'inventario', name: 'nav_inventario', label: lbls.inventario || 'Inventario & Excel', custom: false },
+                                { id: 'whatsapp', name: 'nav_whatsapp', label: lbls.whatsapp || 'WhatsApp Business', custom: false },
+                                { id: 'admin', name: 'nav_admin', label: lbls.admin || 'Admin y Diseño', custom: false },
+                                ...customSecs.map((cs) => ({
+                                  id: cs.id,
+                                  name: `custom_nav_${cs.id}`,
+                                  label: cs.label,
+                                  custom: true
+                                }))
+                              ];
+                              const orden = getOrdenMenu(baseItems.map((x) => x.id));
+                              const ordenados = orden
+                                .map((id) => baseItems.find((x) => x.id === id))
+                                .filter(Boolean);
+
+                              return ordenados
+                                .map(
+                                  (item, idx) => `
+                                  <div class="flex items-center gap-1.5">
+                                    <span class="w-5 text-center font-bold text-slate-400">${idx + 1}.</span>
+                                    <input name="${item.name}" value="${esc(item.label)}" class="flex-1 px-2.5 py-1.5 border rounded-lg" />
+                                    <button type="button" onclick="moverApartadoMenu(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}
+                                      class="px-2 py-1.5 border border-slate-300 rounded-lg font-bold hover:bg-slate-100 disabled:opacity-30" title="Subir">⬆️</button>
+                                    <button type="button" onclick="moverApartadoMenu(${idx}, 1)" ${idx === ordenados.length - 1 ? 'disabled' : ''}
+                                      class="px-2 py-1.5 border border-slate-300 rounded-lg font-bold hover:bg-slate-100 disabled:opacity-30" title="Bajar">⬇️</button>
+                                    ${
+                                      item.custom
+                                        ? `<button type="button" onclick="eliminarApartadoMenu('${item.id}')" class="px-2 py-1.5 bg-red-50 text-red-600 rounded-lg font-bold">✕</button>`
+                                        : ''
+                                    }
+                                  </div>`
+                                )
+                                .join('');
+                            })()}
                           </div>
                         </div>
 
