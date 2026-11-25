@@ -1716,6 +1716,112 @@ function filtrarPacientesAdmin(valor) {
       box.classList.remove('hidden');
     }
 
+function abrirEditarPaciente(id) {
+  const p = state.pacientes.find((x) => x.id === id);
+  if (!p) return;
+
+  // Detecta los nombres de campo que usa tu ficha de paciente
+  const campoTel = 'tel' in p ? 'tel' : 'telefono' in p ? 'telefono' : 'tel';
+  const campoFnac = 'fnac' in p ? 'fnac' : 'fechaNac' in p ? 'fechaNac' : 'nacimiento' in p ? 'nacimiento' : 'fnac';
+  const campoAnt = 'antecedentes' in p ? 'antecedentes' : 'alergias' in p ? 'alergias' : 'antecedentes';
+
+  const previo = document.getElementById('modal-editar-paciente');
+  if (previo) previo.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-editar-paciente';
+  modal.className = 'fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-6 space-y-4 text-xs">
+      <div class="flex items-center justify-between border-b pb-3">
+        <h3 class="font-bold text-base text-slate-800">✏️ Editar Datos del Paciente</h3>
+        <button type="button" onclick="cerrarEditarPaciente()" class="text-slate-400 hover:text-slate-700 font-bold text-sm px-2">✕</button>
+      </div>
+      <form id="form-editar-paciente" class="space-y-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nombre completo *</label>
+          <input type="text" id="edit-pac-nombre" required value="${esc(p.nombre || '')}"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Cédula / Documento *</label>
+            <input type="text" id="edit-pac-doc" required value="${esc(p.doc || '')}"
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Fecha Nac. o Edad</label>
+            <input type="${/^\d{4}-\d{2}-\d{2}$/.test(String(p[campoFnac] || '')) ? 'date' : 'text'}" id="edit-pac-fnac"
+              value="${esc(p[campoFnac] ?? p.edad ?? '')}"
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Teléfono / Celular</label>
+            <input type="text" id="edit-pac-tel" value="${esc(p[campoTel] || '')}"
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Email</label>
+            <input type="email" id="edit-pac-email" value="${esc(p.email || '')}"
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+          </div>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Alertas Médicas / Antecedentes</label>
+          <input type="text" id="edit-pac-ant" value="${esc(p[campoAnt] || '')}"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl" />
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t">
+          <button type="button" onclick="cerrarEditarPaciente()"
+            class="px-4 py-2 border border-slate-300 rounded-xl font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
+          <button type="submit"
+            class="px-4 py-2 bg-teal-600 text-white rounded-xl font-semibold hover:bg-teal-700">💾 Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('form-editar-paciente').onsubmit = function (e) {
+    e.preventDefault();
+    const nuevoNombre = document.getElementById('edit-pac-nombre').value.trim();
+    const nuevoDoc = document.getElementById('edit-pac-doc').value.trim();
+    const nuevoFnac = document.getElementById('edit-pac-fnac').value.trim();
+    const nuevoTel = document.getElementById('edit-pac-tel').value.trim();
+    const nuevoEmail = document.getElementById('edit-pac-email').value.trim();
+    const nuevoAnt = document.getElementById('edit-pac-ant').value.trim();
+
+    if (!nuevoNombre || !nuevoDoc) return;
+
+    p.nombre = nuevoNombre;
+    p.doc = nuevoDoc;
+    p[campoTel] = nuevoTel;
+    p.email = nuevoEmail;
+    p[campoAnt] = nuevoAnt;
+
+    if (nuevoFnac !== '') {
+      if ('edad' in p && !isNaN(Number(nuevoFnac)) && !nuevoFnac.includes('-')) {
+        p.edad = Number(nuevoFnac);
+      } else {
+        p[campoFnac] = nuevoFnac;
+      }
+    }
+
+    save();
+    cerrarEditarPaciente();
+    render();
+    if (typeof alertMsg === 'function') alertMsg('Datos del paciente actualizados.');
+  };
+}
+
+function cerrarEditarPaciente() {
+  const modal = document.getElementById('modal-editar-paciente');
+  if (modal) modal.remove();
+}
+
 function solicitarBorrarTodosPacientes() {
       const box = document.getElementById('confirm-delete-box');
       const txt = document.getElementById('confirm-delete-text');
@@ -7138,7 +7244,7 @@ ${
                     <div class="flex items-center justify-between">
                       <h2 class="font-bold text-base">Nueva Evolución Clínica</h2>
                       <button type="button" onclick="imprimirHistoriaPaciente()"
-                        class="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800">🖨️ Imprimir Historia</button>
+                        class="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800">🖨️ Imprimir Historia</button><button type="button" onclick="abrirEditarPaciente('${esc(pac.id)}')" class="ml-2 px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold hover:bg-sky-100">✏️ Editar datos</button>
                     </div>
                     ${
                       pac
@@ -7858,13 +7964,16 @@ ${
                               p.nombre.toLowerCase().includes(qAdmin) ||
                               p.doc.replace(/[.-]/g, '').toLowerCase().includes(qAdmin)
                           );
-                          return (
+                         return (
                             listaAdmin
                               .map(
                                 (p) => `
-                                <div class="p-2.5 flex items-center justify-between">
+                                <div class="p-2.5 flex items-center justify-between gap-2">
                                   <span><strong>${esc(p.nombre)}</strong> (${esc(p.doc)})</span>
-                                  <button data-id="${esc(p.id)}" onclick="solicitarBorrarPaciente(this.dataset.id)" class="px-2 py-1 bg-red-50 text-red-700 rounded-lg font-semibold">🗑️ Eliminar</button>
+                                  <div class="flex items-center gap-1.5 shrink-0">
+                                    <button type="button" data-id="${esc(p.id)}" onclick="abrirEditarPaciente(this.dataset.id)" class="px-2 py-1 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg font-semibold hover:bg-sky-100">✏️ Editar</button>
+                                    <button type="button" data-id="${esc(p.id)}" onclick="solicitarBorrarPaciente(this.dataset.id)" class="px-2 py-1 bg-red-50 text-red-700 rounded-lg font-semibold hover:bg-red-100">🗑️ Eliminar</button>
+                                  </div>
                                 </div>`
                               )
                               .join('') || '<div class="p-4 text-center text-slate-400">Sin pacientes coincidentes</div>'
