@@ -3474,6 +3474,73 @@ function sincronizarArancelATarifario(idx) {
   render();
 }
 
+function editarArancelExcel(idx, campo, valor) {
+  const ar = state.excelTabla?.aranceles?.[idx];
+  if (!ar) return;
+  if (campo === 'nombre') {
+    ar.nombre = String(valor || '').trim() || ar.nombre;
+  } else {
+    ar[campo] = Math.max(0, Number(valor) || 0);
+  }
+  save();
+  render();
+}
+
+function borrarArancelExcel(idx) {
+  const ar = state.excelTabla?.aranceles?.[idx];
+  if (!ar) return;
+  if (!confirm(`¿Eliminar "${ar.nombre}" de los aranceles importados?`)) return;
+  state.excelTabla.aranceles.splice(idx, 1);
+  save();
+  alertMsg(`Arancel "${ar.nombre}" eliminado.`);
+  render();
+}
+
+function borrarTodosArancelesExcel() {
+  if (!state.excelTabla || !Array.isArray(state.excelTabla.aranceles) || !state.excelTabla.aranceles.length) return;
+  if (!confirm('¿Quitar todas las tarjetas de Aranceles Calculados en Excel?')) return;
+  state.excelTabla.aranceles = [];
+  save();
+  alertMsg('Tarjetas de aranceles Excel eliminadas.');
+  render();
+}
+
+function borrarTratamientoTarifario(idx) {
+  const tool = state.tools[idx];
+  if (!tool || tool.id === 'limpiar') return;
+  if (!confirm(`¿Eliminar el tratamiento "${tool.nombre}" del tarifario?`)) return;
+  state.tools.splice(idx, 1);
+  addLog(`Tratamiento eliminado: ${tool.nombre}`);
+  save();
+  render();
+}
+
+function borrarItemInventario(idOCodigo) {
+  const clave = String(idOCodigo || '').trim();
+  if (!clave) return;
+
+  const item = state.inventario.find(
+    (x) => String(x.id) === clave || String(x.codigo) === clave
+  );
+  if (!item) return;
+
+  if (!confirm(`¿Eliminar "${item.nombre}" del inventario?`)) return;
+
+  state.inventario = state.inventario.filter(
+    (x) => String(x.id) !== String(item.id)
+  );
+
+  if (state.excelTabla && Array.isArray(state.excelTabla.filas)) {
+    state.excelTabla.filas = state.excelTabla.filas.filter(
+      (f) => String(f.codigo) !== String(item.codigo) && f.nombre !== item.nombre
+    );
+  }
+
+  save();
+  alertMsg(`Insumo "${item.nombre}" eliminado.`);
+  render();
+}
+
 function exportarInventarioExcel() {
   if (typeof XLSX === 'undefined') {
     alertMsg('Librería Excel no disponible.', true);
@@ -3518,9 +3585,9 @@ function agregarItemInventario(e) {
   e.target.reset();
   alertMsg('Insumo agregado al inventario.');
   render();
-}
+}    
 
-    // =========================================================================
+// =========================================================================
     // HISTORIA CLÍNICA E IMPRESIÓN
     // =========================================================================
     function anularHistoriaHoy(histId) {
@@ -4695,6 +4762,18 @@ ${
       alertMsg('Tratamiento agregado al tarifario.');
       render();
     }
+
+function borrarTratamientoTarifario(idx) {
+  const tool = state.tools[idx];
+  if (!tool || tool.id === 'limpiar') return;
+
+  if (!confirm(`¿Eliminar el tratamiento "${tool.nombre}" del tarifario?`)) return;
+
+  state.tools.splice(idx, 1);
+  addLog(`Tratamiento eliminado: ${tool.nombre}`);
+  save();
+  render();
+}
 
     function agregarMaterialARecetaTool(e, toolIdx) {
       e.preventDefault();
@@ -7361,7 +7440,7 @@ ${
                                     <td class="py-2.5 px-3 text-right space-x-1">
                                       <button type="button" onclick="ajustarStockInventario('${it.id}', -1)" class="px-2 py-0.5 border rounded font-bold hover:bg-slate-100">-1</button>
                                       <button type="button" onclick="ajustarStockInventario('${it.id}', 1)" class="px-2 py-0.5 border rounded font-bold hover:bg-slate-100">+1</button>
-                                      <button type="button" onclick="borrarItemInventario('${it.id}')" class="px-1.5 py-0.5 text-red-600 font-bold">✕</button>
+                                      <button type="button" onclick="borrarItemInventario('${esc(it.id || it.codigo)}')" title="Eliminar producto" class="px-1.5 py-0.5 text-red-600 hover:bg-red-50 rounded font-bold">✕</button>
                                     </td>
                                   </tr>`;
                               })
@@ -7377,39 +7456,45 @@ ${
                     Array.isArray(state.excelTabla?.aranceles) && state.excelTabla.aranceles.length
                       ? `
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 space-y-3 text-xs">
-                      <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="font-bold text-sm">🧮 Aranceles Calculados en Excel (${state.excelTabla.aranceles.length})</h3>
-                        ${
-                          state.excelTabla?.cunas
-                            ? `<span class="px-3 py-1 rounded-full bg-teal-50 text-teal-800 font-semibold">
-                                Cuñas/Matrices: Opción 1: ${fmtMoney(state.excelTabla.cunas.opcion1 || 0)} · Opción 2 prorrateada: ${fmtMoney(state.excelTabla.cunas.opcion2 || 0)}/pac.
-                              </span>`
-                            : ''
-                        }
-                      </div>
-                      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        ${state.excelTabla.aranceles
-                          .map(
-                            (ar, aIdx) => `
-                            <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between gap-2">
-                              <div>
-                                <div class="font-bold text-sm text-slate-800">${esc(ar.nombre || ar.hoja || 'Arancel ' + (aIdx + 1))}</div>
-                                <div class="text-slate-500 mt-1">
-                                  Insumos: <strong>${fmtMoney(ar.costoInsumos || 0)}</strong> · Sillón: <strong>${fmtMoney(ar.costoSillon || 0)}</strong>
-                                </div>
-                              </div>
-                              <div class="flex items-center justify-between pt-2 border-t border-slate-200">
-                                <span class="font-mono font-extrabold text-brand text-sm">${fmtMoney(ar.arancelSugerido || 0)}</span>
-                                ${
-                                  typeof sincronizarArancelATarifario === 'function'
-                                    ? `<button type="button" onclick="sincronizarArancelATarifario(${aIdx})" class="px-2.5 py-1 bg-brand text-white rounded-lg font-semibold">Enviar a Tarifario</button>`
-                                    : ''
-                                }
-                              </div>
-                            </div>`
-                          )
-                          .join('')}
-                      </div>
+<div class="flex items-center justify-between gap-2 mb-3">
+  <h3 class="font-bold text-sm">📊 Aranceles Calculados en Excel (${state.excelTabla.aranceles.length})</h3>
+  <button type="button" onclick="borrarTodosArancelesExcel()" class="px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 border border-red-200 rounded-lg">
+    Limpiar todos
+  </button>
+</div>
+<div class="grid md:grid-cols-3 gap-3">
+  ${state.excelTabla.aranceles
+    .map(
+      (ar, idx) => `
+      <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col justify-between gap-2.5">
+        <div>
+          <div class="flex items-start justify-between gap-2">
+            <input type="text" value="${esc(ar.nombre)}"
+              onchange="editarArancelExcel(${idx}, 'nombre', this.value)"
+              class="font-bold text-slate-800 text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 w-full" />
+            <button type="button" onclick="borrarArancelExcel(${idx})" title="Eliminar arancel"
+              class="px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg font-bold shrink-0">✕</button>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1.5">
+            Insumos: ${fmtMoney(ar.costoInsumos)} · Sillón: ${fmtMoney(ar.costoSillon)}
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-1">
+            <span class="text-xs font-bold text-slate-400">$</span>
+            <input type="number" step="0.01" value="${Number(ar.arancelSugerido) || 0}"
+              onchange="editarArancelExcel(${idx}, 'arancelSugerido', this.value)"
+              class="w-24 px-2 py-1 border border-slate-300 rounded-lg font-mono font-bold text-teal-700 bg-white text-xs text-right" />
+          </div>
+          <button type="button" onclick="sincronizarArancelATarifario(${idx})"
+            class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold">
+            Enviar a Tarifario
+          </button>
+        </div>
+      </div>`
+    )
+    .join('')}
+</div>
                     </div>`
                       : ''
                   }
@@ -7460,10 +7545,11 @@ ${
                                 <span class="font-bold text-sm text-slate-800 truncate" title="${esc(t.nombre)}">${esc(t.nombre)}</span>
                                 <span class="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">${esc(t.tipo)}</span>
                               </div>
-                              <div class="flex items-center gap-1 shrink-0">
+<div class="flex items-center gap-1 shrink-0">
                                 <span class="text-slate-400 font-bold">${esc(state.config.moneda)}</span>
                                 <input type="number" step="0.01" value="${t.precio}" onchange="state.tools[${idx}].precio=Number(this.value)||0;save();render()"
                                   class="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right font-mono font-bold bg-slate-50 focus:bg-white" />
+                                <button type="button" onclick="borrarTratamientoTarifario(${idx})" title="Eliminar tratamiento" class="px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg font-bold">✕</button>
                               </div>
                             </div>
 
