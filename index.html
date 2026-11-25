@@ -5747,100 +5747,59 @@ function pantallaCrearPinHTML() {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
-function exportarJSON() {
-      descargarTexto(`OdontoLocal_Backup_${hoyISO()}.json`, JSON.stringify(estadoParaExportar(false), null, 2));
-      state.config.ultimoRespaldoTs = Date.now();
-      state.config.ultimoRespaldoFecha = fechaHoraLocalTexto();
-      addLog('Respaldo JSON exportado (sin PIN ni token)');
-      save();
-      render();
-      alertMsg('Respaldo descargado (sin PIN ni token de WhatsApp).');
+async function exportarJSON() {
+  const fecha = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const nombreArchivo = `respaldo-consultorio-${fecha}.json`;
+  const contenido = JSON.stringify(state, null, 2);
+
+  // 1. Si ya tienes vinculada la Carpeta Respaldo PC, guarda directo allí
+  if (typeof carpetaBackupHandle !== 'undefined' && carpetaBackupHandle) {
+    try {
+      let perm = await carpetaBackupHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        perm = await carpetaBackupHandle.requestPermission({ mode: 'readwrite' });
+      }
+      if (perm === 'granted') {
+        const fileHandle = await carpetaBackupHandle.getFileHandle(nombreArchivo, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(contenido);
+        await writable.close();
+        if (typeof alertMsg === 'function') {
+          alertMsg(`✅ Respaldo guardado en "${carpetaBackupHandle.name}/${nombreArchivo}"`);
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('No se pudo escribir en carpetaBackupHandle, usando selector:', err);
     }
-    async function exportarJSONCifrado() {
-      const v = await abrirDialogo({
-        titulo: 'Respaldo cifrado',
-        mensaje: 'Elige una clave para cifrar el respaldo (mínimo 8 caracteres). Si la pierdes, no se puede recuperar.',
-        campos: [
-          { id: 'clave', label: 'Clave', type: 'password', requerido: true },
-          { id: 'clave2', label: 'Repite la clave', type: 'password', requerido: true }
-        ],
-        aceptar: 'Cifrar y descargar',
-        validar: (x) => (x.clave.length < 8 ? 'La clave debe tener al menos 8 caracteres.' : x.clave !== x.clave2 ? 'Las claves no coinciden.' : '')
+  }
+
+  // 2. Si no hay carpeta vinculada, abre el cuadro "Guardar como" de Windows (Chrome/Edge)
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: nombreArchivo,
+        types: [{ description: 'Archivo JSON', accept: { 'application/json': ['.json'] } }]
       });
-      if (!v) return;
-      try {
-        const env = await cifrarRespaldo(JSON.stringify(estadoParaExportar(true)), v.clave);
-        descargarTexto(`CPFOdonto_Backup_${hoyISO()}.cifrado.json`, JSON.stringify(env));
-	state.config.ultimoRespaldoTs = Date.now();
-	state.config.ultimoRespaldoFecha = fechaHoraLocalTexto();
-        addLog('Respaldo cifrado exportado');
-        save();
-	render();
-        alertMsg('Respaldo cifrado descargado.');
-      } catch (err) {
-        alertMsg(err.message || 'No se pudo cifrar el respaldo.', true);
-      }
+      const writable = await handle.createWritable();
+      await writable.write(contenido);
+      await writable.close();
+      if (typeof alertMsg === 'function') alertMsg('✅ Respaldo JSON guardado.');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return; // El usuario canceló el cuadro
     }
-    async function importarJSON(e) {
-      const input = e.target;
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        let d = JSON.parse(await file.text());
-        if (d && d.formato === 'CPFOdonto-cifrado') {
-          const v = await abrirDialogo({
-            titulo: 'Respaldo cifrado',
-            mensaje: 'Escribe la clave con la que se cifró este respaldo.',
-            campos: [{ id: 'clave', label: 'Clave', type: 'password', requerido: true }],
-            aceptar: 'Descifrar'
-          });
-          if (!v) return;
-          try {
-            d = JSON.parse(await descifrarRespaldo(d, v.clave));
-          } catch (_) {
-            return alertMsg('Clave incorrecta o archivo dañado.', true);
-          }
-        }
-        if (!d || !Array.isArray(d.pacientes)) return alertMsg('El archivo no parece un respaldo de CPFOdonto (faltan los pacientes).', true);
-	const errorValidacion = validarRespaldoImportado(d);
-        if (errorValidacion) {
-          return alertMsg(`⛔ Respaldo rechazado por seguridad: ${errorValidacion}`, true);
-        }
-        const ok = await abrirDialogo({
-          titulo: 'Restaurar respaldo',
-          mensaje: `Se reemplazarán TODOS los datos actuales por los del respaldo (${d.pacientes.length} pacientes, ${(d.turnos || []).length} turnos). No se puede deshacer.`,
-          aceptar: 'Restaurar',
-          peligro: true
-        });
-        if (!ok) return;
-        const nuevo = normalizarEstado(sanitizarDatosImportados(d));
-        CLAVES_SEGURIDAD_LOCAL.forEach((k) => {
-          if (state.config[k] !== undefined) nuevo.config[k] = state.config[k];
-          else delete nuevo.config[k];
-        });
-        if (!nuevo.wppConfig.tokenApi) nuevo.wppConfig.tokenApi = state.wppConfig?.tokenApi || '';
-        state = nuevo;
-        await asegurarSeguridad();
-        pacActivoId = state.pacientes[0]?.id || '';
-        presupuestoId = state.presupuestos[0]?.id || '';
-        addLog('Base de datos restaurada desde respaldo');
-        save();
-        render();
-        alertMsg('Datos restaurados. Tu PIN actual se mantiene.');
-      } catch (_) {
-        alertMsg('Archivo inválido', true);
-      } finally {
-        input.value = '';
-      }
-    }
-    function urlWebhookSegura(u) {
-      try {
-        const x = new URL(u);
-        return x.protocol === 'https:' || (x.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(x.hostname));
-      } catch (_) {
-        return false;
-      }
-    }
+  }
+
+  // 3. Respaldo clásico si el navegador no soporta File System Access API
+  const blob = new Blob([contenido], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
     // =========================================================================
     // COBROS: pagos parciales por presupuesto, saldo, anulación (sin borrar)
